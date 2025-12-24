@@ -1,4 +1,7 @@
 const User = require('../models/User');
+const Doctor = require('../models/Doctor');
+const Nurse = require('../models/Nurse');
+const Patient = require('../models/Patient');
 const jwt = require('jsonwebtoken');
 
 // @desc    Register a new user
@@ -6,13 +9,19 @@ const jwt = require('jsonwebtoken');
 // @access  Public
 const registerUser = async (req, res) => {
     try {
-        const { name, email, age, password, role } = req.body;
+        const {
+            name, email, age, password, role,
+            // Role specific data
+            specialization, experience, availability, consultationFee, // Doctor
+            department, shift,                                         // Nurse
+            medicalHistory, allergies, bloodGroup                      // Patient
+        } = req.body;
 
-        // Validate all fields are present
+        // Validate basic fields
         if (!name || !email || !age || !password || !role) {
             return res.status(400).json({
                 success: false,
-                message: 'Please provide all required fields'
+                message: 'Please provide all required basic fields'
             });
         }
 
@@ -32,6 +41,51 @@ const registerUser = async (req, res) => {
             age,
             password,
             role
+        });
+
+        // Create role-specific record
+        try {
+            if (role === 'doctor') {
+                await Doctor.create({
+                    userId: user._id,
+                    specialization,
+                    experience,
+                    availability,
+                    consultationFee
+                });
+            } else if (role === 'nurse') {
+                await Nurse.create({
+                    userId: user._id,
+                    department,
+                    shift
+                });
+            } else if (role === 'patient') {
+                await Patient.create({
+                    userId: user._id,
+                    medicalHistory,
+                    allergies,
+                    bloodGroup
+                });
+            }
+        } catch (roleError) {
+            // Rollback user creation if role-specific record fails
+            await User.findByIdAndDelete(user._id);
+            throw roleError;
+        }
+
+        // Generate JWT
+        const token = jwt.sign(
+            { id: user._id, role: user.role },
+            process.env.JWT_SECRET || 'fallback_secret',
+            { expiresIn: '1d' }
+        );
+
+        // Set cookie
+        res.cookie('token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            maxAge: 24 * 60 * 60 * 1000 // 1 day
         });
 
         // Return user data without password
@@ -149,8 +203,41 @@ const logoutUser = (req, res) => {
     });
 };
 
+// @desc    Get current user profile
+// @route   GET /api/auth/me
+// @access  Private
+const getMe = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+
+        if (user) {
+            res.status(200).json({
+                success: true,
+                user: {
+                    id: user._id,
+                    name: user.name,
+                    email: user.email,
+                    role: user.role
+                }
+            });
+        } else {
+            res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+    } catch (error) {
+        console.error('getMe error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error'
+        });
+    }
+};
+
 module.exports = {
     registerUser,
     loginUser,
-    logoutUser
+    logoutUser,
+    getMe
 };

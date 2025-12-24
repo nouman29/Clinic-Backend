@@ -29,8 +29,8 @@ const userSchema = new mongoose.Schema({
         type: String,
         required: [true, 'Please provide a role'],
         enum: {
-            values: ['doctor', 'nurse', 'admin', 'receptionist'],
-            message: 'Role must be either doctor, nurse, admin, or receptionist'
+            values: ['doctor', 'nurse', 'admin', 'patient'],
+            message: 'Role must be either doctor, nurse, admin, or patient'
         }
     },
     createdAt: {
